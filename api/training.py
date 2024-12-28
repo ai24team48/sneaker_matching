@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from sneaker_matching.service.training_pipline import train_model_service
-from sneaker_matching.schemas.all_schemas import TrainingResponse, TrainingRequest
+from ..service.training_pipline import train_model_service
+from ..schemas.all_schemas import TrainingResponse, TrainingRequest
 
 router = APIRouter()
 

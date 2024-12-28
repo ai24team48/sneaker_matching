@@ -17,64 +17,22 @@ def init_torch_model() -> PairwiseBinaryClassifier:
     return model
 
 
-def evaluate_model(model: nn.Module, dataloader: DataLoader) -> tuple[list[float], list[float], list[float], float]:
-    model.eval()
-    all_targets = []
-    all_predictions = []
-    all_probas = []
+def make_predictions(sampled_df):
+    text_emb1 = torch.tensor(sampled_df["name_bert_64_1"].tolist(), dtype=torch.float32)
+    text_emb2 = torch.tensor(sampled_df["name_bert_64_2"].tolist(), dtype=torch.float32)
+    img_emb1 = torch.tensor(sampled_df["main_pic_embeddings_resnet_v1_1"].tolist(), dtype=torch.float32)
+    img_emb2 = torch.tensor(sampled_df["main_pic_embeddings_resnet_v1_2"].tolist(), dtype=torch.float32)
 
-    with torch.no_grad():
-        for batch in dataloader:
-            text_emb1 = batch['text_emb1']
-            img_emb1 = batch['img_emb1']
-            text_emb2 = batch['text_emb2']
-            img_emb2 = batch['img_emb2']
-            targets = batch['target']
-
-            criterion = nn.BCELoss()
-            outputs = model(text_emb1, img_emb1, text_emb2, img_emb2)
-            loss = criterion(outputs, batch["target"].view(-1, 1))
-            predictions = (outputs > 0.5).float()
-
-            all_targets.extend(targets.cpu().numpy().tolist())
-            all_predictions.extend(predictions.squeeze().cpu().numpy().tolist())
-            all_probas.extend(outputs.squeeze().cpu().numpy().tolist())
-
-    return all_targets, all_predictions, all_probas, loss.item()
-
-
-def pipeline_predict(sampled_df):
-    text_embeddings_sampled = sampled_df["name_bert_64_1"]
-    img_embeddings_sampled = sampled_df["main_pic_embeddings_resnet_v1"]
-    sampled_variant_pairs = sampled_df[["variantid1", "variantid2"]].values
-    targets_sampled = sampled_df["target"].values
-
-    sampled_dataset = VariantPairDataset(
-        variant_pairs=sampled_variant_pairs,
-        text_embeddings=text_embeddings_sampled,
-        img_embeddings=img_embeddings_sampled,
-        targets=targets_sampled
-    )
-
-    sampled_dataloader = DataLoader(sampled_dataset, batch_size=15, shuffle=False)
     model = init_torch_model()
-    real, preds, probas, loss = evaluate_model(model, sampled_dataloader)
+    model.eval()
+    with torch.no_grad():
+        outputs = model(text_emb1, img_emb1, text_emb2, img_emb2)
+        probas = outputs.squeeze().cpu().numpy()
+        predictions = (outputs > 0.5).float().squeeze().cpu().numpy()
 
-    accuracy = accuracy_score(real, preds)
-    f1 = f1_score(real, preds)
-    roc_auc = roc_auc_score(real, probas)
+    sampled_df["predictions"] = predictions
+    sampled_df["probas"] = probas
 
-    results_df = pd.DataFrame({
-        'variantid1': sampled_variant_pairs[:, 0],
-        'variantid2': sampled_variant_pairs[:, 1],
-        'target': real,
-        'prediction': preds,
-        'probability': probas
-    })
-
-    results_file = "predictions_results.csv"
-    results_df.to_csv(results_file, index=False)
-
-    return results_file, accuracy, f1, roc_auc
+    return sampled_df
 
 
