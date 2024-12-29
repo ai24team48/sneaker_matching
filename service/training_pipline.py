@@ -5,7 +5,7 @@ import torch.optim as optim
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
-from train_classes import VariantPairDataset, PairwiseBinaryClassifier
+from .train_classes import VariantPairDataset, PairwiseBinaryClassifier
 from typing import Optional
 
 

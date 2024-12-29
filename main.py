@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
-from sneaker_matching.api import predictions, training
+from api import predictions, training
 
 app = FastAPI()
 

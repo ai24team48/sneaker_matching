@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
-from train_classes import PairwiseBinaryClassifier, VariantPairDataset
+from .train_classes import PairwiseBinaryClassifier, VariantPairDataset
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 

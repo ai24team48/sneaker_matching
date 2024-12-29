@@ -45,13 +45,7 @@ class VariantPairDataset(Dataset):
 
 
 class PairwiseBinaryClassifier(nn.Module):
-    def __init__(
-            self,
-            text_emb_size: int,
-            img_emb_size: int,
-            hidden_size: int,
-            nlayers: int
-    ) -> None:
+    def __init__(self, text_emb_size: int, img_emb_size: int, hidden_size: int, nlayers: int) -> None:
         super(PairwiseBinaryClassifier, self).__init__()
         input_size = 2 * (text_emb_size + img_emb_size)
         layers = []
@@ -60,8 +54,7 @@ class PairwiseBinaryClassifier(nn.Module):
                 [
                     nn.Linear(input_size if i == 0 else hidden_size, hidden_size),
                     nn.BatchNorm1d(hidden_size),
-                    nn.PReLU(),
-                    nn.Dropout(0.3)
+                    nn.PReLU()
                 ]
             )
         self.layers = nn.Sequential(*layers)
@@ -74,13 +67,7 @@ class PairwiseBinaryClassifier(nn.Module):
             if param.dim() > 1:
                 nn.init.xavier_uniform_(param)
 
-    def forward(
-            self,
-            text_emb1: torch.Tensor,
-            img_emb1: torch.Tensor,
-            text_emb2: torch.Tensor,
-            img_emb2: torch.Tensor,
-    ) -> torch.Tensor:
+    def forward(self, text_emb1, img_emb1, text_emb2, img_emb2):
         x = torch.cat((text_emb1, img_emb1, text_emb2, img_emb2), dim=-1)
         x = self.layers(x)
         x = self.sigmoid(self.scorer(x))

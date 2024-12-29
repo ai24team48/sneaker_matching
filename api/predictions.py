@@ -5,7 +5,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, APIRouter
 import pandas as pd
 import os
 from dotenv import load_dotenv
-from ..service.prediction_pipeline import make_predictions
+from service.prediction_pipeline import make_predictions
 from multiprocessing import Value
 
 router = APIRouter()
@@ -22,6 +22,7 @@ if not os.path.exists(MODEL_DIR):
 NUM_CORES = int(os.getenv("NUM_CORES", 4))
 MAX_MODELS = int(os.getenv("MAX_MODELS", 2))
 MAX_PROCESSES = NUM_CORES - 1
+
 
 async def process_predictions(df: pd.DataFrame):
     try:
