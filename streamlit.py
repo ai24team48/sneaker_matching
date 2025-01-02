@@ -1,18 +1,15 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import streamlit as st
-import matplotlib.pyplot as plt
 import requests
+import streamlit as st
+
 
 # Web App Title
 st.markdown('''
 # **The EDA App**
 
 This is the **EDA App** created in Streamlit using the **pandas-profiling** library.
-
-**Credit:** App built in `Python` + `Streamlit` by [Chanin Nantasenamat](https://medium.com/@chanin.nantasenamat) (aka [Data Professor](http://youtube.com/dataprofessor))
-
----
 ''')
 
 # Upload CSV data
@@ -163,13 +160,6 @@ def upload_and_train():
         if st.button("Отправить на обучение"):
             # Отправка файла и параметров на сервер для обучения
             files = {"file": ("uploaded_file.pkl", uploaded_file, "application/octet-stream")}
-            data = {
-                "model_name": model_name,
-                "additional_training": additional_training,
-                "n_epochs": n_epochs,
-                "batch_size": batch_size,
-            }
-
             url = f"http://localhost:8000/train?model_name={model_name}&additional_training={additional_training}&n_epochs={n_epochs}&batch_size={batch_size}"
 
             try:
