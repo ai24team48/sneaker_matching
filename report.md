@@ -11,7 +11,7 @@
     - `predictions.py`
     - `training.py`
 - `data/` - директория с тестовыми данными. Представлен небольшой экземпляр, так как все данные для обучения весят 10 гб.
-    - Описание всех данных лежит в `data_info.md`
+    - Описание всех данных лежит в `data_info.md` https://github.com/ai24team48/sneaker_matching/blob/main/data_info.txt
 - `streamlit.py` - файл для запуска Streamlit-приложения.
 - `main.py` - основной файл для запуска FastAPI-сервера.
 - `requirement.txt` - файл с зависимостями.
