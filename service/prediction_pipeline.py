@@ -6,11 +6,11 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 
 
-def init_torch_model() -> PairwiseBinaryClassifier:
+def init_torch_model(model_name='pairwise_binary_classifier') -> PairwiseBinaryClassifier:
     model = PairwiseBinaryClassifier(text_emb_size=64, img_emb_size=128, hidden_size=512, nlayers=5)
     model.load_state_dict(
         torch.load(
-            "models/pairwise_binary_classifier.pth",
+            f"models/{model_name}.pth",
             map_location=torch.device('cpu')
         )
     )

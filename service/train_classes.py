@@ -83,6 +83,23 @@ class Embedding(nn.Module):
         return self.linear(x)
 
 
+class EmbeddingDataset(Dataset):
+    def __init__(self, dataframe):
+        self.data = dataframe
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data.iloc[idx]
+        return {
+            "text_emb1": torch.tensor(row["name_bert_64_1"], dtype=torch.float32),
+            "text_emb2": torch.tensor(row["name_bert_64_2"], dtype=torch.float32),
+            "img_emb1": torch.tensor(row["main_pic_embeddings_resnet_v1_1"], dtype=torch.float32),
+            "img_emb2": torch.tensor(row["main_pic_embeddings_resnet_v1_2"], dtype=torch.float32),
+            "target": torch.tensor(row["target"], dtype=torch.float32),
+        }
+
 class PairwiseEmbedOrientBinaryClassifier(nn.Module):
     def __init__(
             self,
