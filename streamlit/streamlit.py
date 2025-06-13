@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
-
+from PIL import Image
+import io
 
 # Web App Title
 st.markdown('''
@@ -119,31 +120,52 @@ def main():
         upload_and_train()
 
 
+
 def upload_and_predict():
-    # Интерфейс для загрузки файла и выполнения предсказания
     uploaded_file = st.file_uploader("Загрузите файл (pickle) для предсказания", type=["pkl"])
 
     if uploaded_file is not None:
         if st.button("Отправить на предсказание"):
-            # Отправка файла на сервер для предсказания
             files = {"file": ("uploaded_file.pkl", uploaded_file, "application/octet-stream")}
-            url = "http://127.0.0.1:8000/predictions/predict"  # URL для предсказания
+            response = requests.post("http://127.0.0.1:8000/predictions/predict", files=files)
 
-            try:
-                response = requests.post(url, files=files)
-                if response.status_code == 200:
-                    st.success("Предсказание успешно выполнено!")
-                    # Скачивание результатов
-                    st.download_button(
-                        label="Скачать результат",
-                        data=response.content,
-                        file_name="predictions_output.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.error(f"Ошибка: {response.status_code}, {response.text}")
-            except requests.exceptions.RequestException as e:
-                st.error(f"Ошибка при отправке запроса: {e}")
+            if response.status_code == 200:
+                st.success("Предсказание успешно выполнено!")
+
+                df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
+                st.subheader(f"Результаты ({len(df)} записей)")
+
+                for idx, row in df.iterrows():
+                    st.write(f"**Запись {idx + 1}**")
+
+                    col1, col2, col3 = st.columns([2, 3, 1])
+
+                    with col1:
+                        img_col1, img_col2 = st.columns(2)
+                        with img_col1:
+                            st.image(Image.open(f"data/images/{row['variantid1']}.png"), width=100)
+                        with img_col2:
+                            st.image(Image.open(f"data/images/{row['variantid2']}.png"), width=100)
+
+                    with col2:
+                        st.write(f"**1:** {row['name1'][:60]}...")
+                        st.write(f"**2:** {row['name2'][:60]}...")
+
+                    with col3:
+                        target = "✅ Одинаковые" if row['target'] == 1 else "❌ Разные"
+                        st.write(target)
+                        st.write(f"**{row['probas']:.3f}**")
+
+                    st.divider()
+
+                st.download_button(
+                    label="Скачать результат",
+                    data=response.content,
+                    file_name="predictions_output.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.error(f"Ошибка: {response.status_code}")
 
 
 def upload_and_train():
