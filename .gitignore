@@ -6,3 +6,4 @@ data/
 *.parquet
 *.csv
 *.xlsx
+**/__pycache__

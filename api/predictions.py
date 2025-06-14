@@ -7,8 +7,11 @@ import os
 from dotenv import load_dotenv
 from service.prediction_pipeline import make_predictions
 from multiprocessing import Value
+import logging
+
 
 router = APIRouter()
+logger = logging.getLogger()
 active_processes = asyncio.Lock()
 active_processes_counter = Value('i', 0)
 
@@ -23,51 +26,72 @@ NUM_CORES = int(os.getenv("NUM_CORES", 4))
 MAX_MODELS = int(os.getenv("MAX_MODELS", 2))
 MAX_PROCESSES = NUM_CORES - 1
 
+logger.info(f"Initialized with NUM_CORES={NUM_CORES}, MAX_MODELS={MAX_MODELS}, MAX_PROCESSES={MAX_PROCESSES}")
+
 
 async def process_predictions(df: pd.DataFrame):
     try:
+        logger.info("Starting predictions processing")
         result_df = make_predictions(df)
+        logger.info("Predictions processed successfully")
         return result_df
     except Exception as e:
-        print(f"Error processing predictions: {e}")
-        return None
+        logger.error(f"Error processing predictions: {str(e)}", exc_info=True)
+        return e
 
 
 @router.post("/predict")
 async def predict(file: UploadFile = File(...)):
+    logger.info(f"Received prediction request for file: {file.filename}")
+
     if file.content_type not in ["application/octet-stream", "application/x-pickle"]:
-        raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a pickle file.")
+        error_msg = f"Unsupported file format: {file.content_type}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
 
     async with active_processes:
-        if active_processes.locked():
-            if active_processes_counter.value >= MAX_PROCESSES:
-                raise HTTPException(status_code=429, detail="Too many concurrent requests. Please try again later.")
+        current_processes = active_processes_counter.value
+        logger.debug(f"Active processes: {current_processes}")
 
+        if current_processes >= MAX_PROCESSES:
+            error_msg = f"Too many concurrent requests (max {MAX_PROCESSES})"
+            logger.warning(error_msg)
+            raise HTTPException(status_code=429, detail=error_msg)
+
+        try:
             active_processes_counter.value += 1
+            logger.debug(f"Incremented process counter to {active_processes_counter.value}")
 
-            try:
-                df = pd.read_pickle(io.BytesIO(await file.read()))
-                result_df = await process_predictions(df)
+            logger.info(f"Reading file {file.filename}")
+            df = pd.read_pickle(io.BytesIO(await file.read()))
+            logger.info(f"Successfully read DataFrame with shape {df.shape}")
 
-                if result_df is None:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to process the request: {str(result_df)}" if isinstance(result_df, Exception) else "Failed to process the request",
-                    )
+            result_df = await process_predictions(df)
 
-                csv_file = io.StringIO()
-                result_df.to_csv(csv_file, index=False)
-                csv_file.seek(0)
+            if result_df is None or isinstance(result_df, Exception):
+                error_msg = f"Prediction failed: {str(result_df)}" if result_df else "Unknown error"
+                logger.error(error_msg)
+                raise HTTPException(status_code=500, detail=error_msg)
 
-                return StreamingResponse(
-                    csv_file,
-                    media_type="text/csv",
-                    headers={"Content-Disposition": f"attachment; filename={file.filename}.csv"},
-                )
-            finally:
-                active_processes_counter.value -= 1
-        else:
-            raise HTTPException(status_code=500, detail="Failed to acquire the lock.")
+            logger.info("Converting results to CSV")
+            csv_file = io.StringIO()
+            result_df.to_csv(csv_file, index=False)
+            csv_file.seek(0)
+
+            logger.info("Returning prediction results")
+            return StreamingResponse(
+                csv_file,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={file.filename}.csv"},
+            )
+
+        except Exception as e:
+            logger.error(f"Unexpected error during prediction: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        finally:
+            active_processes_counter.value -= 1
+            logger.debug(f"Decremented process counter to {active_processes_counter.value}")
 
 
 

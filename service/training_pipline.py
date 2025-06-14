@@ -2,12 +2,38 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import torch.optim as optim
-from torch.utils.data import  DataLoader
+from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from .train_classes import PairwiseBinaryClassifier, EmbeddingDataset
+from datetime import datetime
+import os
+from dotenv import load_dotenv
+import wandb
 
 
-def evaluate_model(model, dataloader, criterion):
+load_dotenv()
+
+
+def init_wandb(model_name: str, config: dict):
+    try:
+        wandb_key = os.getenv('WANDB_API_KEY')
+        if wandb_key:
+            wandb.login(key=wandb_key)
+        else:
+            wandb.login()
+
+        run = wandb.init(
+            project="pairwise-model-training",
+            name=f"{model_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+            config=config
+        )
+        return run
+    except Exception as e:
+        print(f"W&B initialization failed: {e}")
+        return None
+
+
+def evaluate_model(model, dataloader, criterion, log_to_wandb=False):
     model.eval()
     total_loss = 0
     all_targets = []
@@ -30,7 +56,15 @@ def evaluate_model(model, dataloader, criterion):
             all_predictions.extend(predictions.cpu().numpy())
 
     avg_loss = total_loss / len(dataloader)
-    return avg_loss, all_targets, all_predictions
+    accuracy = (torch.tensor(all_predictions) == torch.tensor(all_targets)).float().mean()
+
+    if log_to_wandb and wandb.run:
+        wandb.log({
+            "eval/loss": avg_loss,
+            "eval/accuracy": accuracy
+        })
+
+    return avg_loss, all_targets, all_predictions, accuracy.item()
 
 
 def train_model(
@@ -40,34 +74,94 @@ def train_model(
         test_dataloader: DataLoader,
         optimizer: optim.Optimizer,
         criterion: nn.Module,
-        num_epochs: int
-) -> tuple[dict[str, torch.Tensor], float]:
+        num_epochs: int,
+        use_wandb: bool = True
+) -> tuple[float, float]:
+
+    config = {
+        "model": model_name,
+        "optimizer": type(optimizer).__name__,
+        "criterion": type(criterion).__name__,
+        "learning_rate": optimizer.param_groups[0]['lr'],
+        "batch_size": train_dataloader.batch_size,
+        "num_epochs": num_epochs
+    }
+
+    wandb_run = init_wandb(model_name, config) if use_wandb else None
+
+    if wandb_run:
+        wandb.watch(model, log="all", log_freq=10)
+
+    best_test_loss = float('inf')
+
     for epoch in range(num_epochs):
         model.train()
-        total_loss = 0
+        epoch_train_loss = 0
 
-        for batch in train_dataloader:
-            text_emb1 = batch['text_emb1']
-            img_emb1 = batch['img_emb1']
-            text_emb2 = batch['text_emb2']
-            img_emb2 = batch['img_emb2']
+        for batch_idx, batch in enumerate(train_dataloader):
+            optimizer.zero_grad()
+
+            inputs = {
+                'text_emb1': batch['text_emb1'],
+                'img_emb1': batch['img_emb1'],
+                'text_emb2': batch['text_emb2'],
+                'img_emb2': batch['img_emb2']
+            }
             targets = batch['target']
 
-            outputs = model(text_emb1, img_emb1, text_emb2, img_emb2).squeeze()
+            outputs = model(**inputs).squeeze()
             loss = criterion(outputs, targets)
-
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
+            epoch_train_loss += loss.item()
 
-        avg_train_loss = total_loss / len(train_dataloader)
-        avg_test_loss, _, _ = evaluate_model(model, test_dataloader, criterion)
+            if wandb_run and batch_idx % 10 == 0:
+                wandb.log({
+                    "batch/train_loss": loss.item(),
+                    "batch/learning_rate": optimizer.param_groups[0]['lr']
+                })
 
-        print(f"Epoch [{epoch + 1}/{num_epochs}], Train Loss: {avg_train_loss:.4f}, Test Loss: {avg_test_loss:.4f}")
+        avg_train_loss = epoch_train_loss / len(train_dataloader)
+        avg_test_loss, _, _, test_accuracy = evaluate_model(
+            model, test_dataloader, criterion, log_to_wandb=use_wandb
+        )
 
-    torch.save(model.state_dict(), f'models/{model_name}.pth')
+        print(f"Epoch {epoch + 1}/{num_epochs} | "
+              f"Train Loss: {avg_train_loss:.4f} | "
+              f"Test Loss: {avg_test_loss:.4f} | "
+              f"Test Acc: {test_accuracy:.4f}")
+
+        if wandb_run:
+            wandb.log({
+                "epoch/train_loss": avg_train_loss,
+                "epoch/test_loss": avg_test_loss,
+                "epoch/test_accuracy": test_accuracy,
+                "epoch": epoch + 1
+            })
+
+            if avg_test_loss < best_test_loss:
+                best_test_loss = avg_test_loss
+                torch.save(model.state_dict(), f"models/{model_name}_best.pth")
+                wandb.save(f"models/{model_name}_best.pth")
+                wandb.run.summary["best_test_loss"] = best_test_loss
+                wandb.run.summary["best_test_accuracy"] = test_accuracy
+
+    torch.save(model.state_dict(), f"models/{model_name}_final.pth")
+
+    if wandb_run:
+        wandb.save(f"models/{model_name}_final.pth")
+
+        model_artifact = wandb.Artifact(
+            name=f"model-{model_name}",
+            type="model",
+            metadata=config
+        )
+        model_artifact.add_file(f"models/{model_name}_final.pth")
+        wandb.log_artifact(model_artifact)
+
+        wandb.finish()
+
     return avg_train_loss, avg_test_loss
 
 

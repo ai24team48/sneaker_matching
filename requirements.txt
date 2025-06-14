@@ -8,3 +8,4 @@ scikit-learn
 torch
 python-multipart
 matplotlib
+wandb
